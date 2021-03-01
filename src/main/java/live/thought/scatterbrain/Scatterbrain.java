@@ -37,7 +37,9 @@ public class Scatterbrain
   private static final String              DEFAULT_INTERVAL      = Integer.toString(120);                 // 2 minutes
   private static final String              DEFAULT_STAKE_MEAN    = Double.toString(50.0);
   private static final String              DEFAULT_STAKE_SD      = Double.toString(5);
-  private static final String              DEFAULT_TRANSFER      = Double.toString(0.5);
+  private static final String              DEFAULT_STAKE_THRESH  = Double.toString(10.0);
+  private static final String              DEFAULT_TRANSFER_MIN  = Double.toString(0.01);
+  private static final String              DEFAULT_TRANSFER_MAX  = Double.toString(0.25);
   private static final String              DEFAULT_MINB          = Double.toString(315000.0);             // Stay above
                                                                                                           // masternode
                                                                                                           // stake by
@@ -53,7 +55,9 @@ public class Scatterbrain
   private static final String              INTR_PROPERTY         = "interval";
   private static final String              STAKE_MEAN_PROPERTY   = "stakeMean";
   private static final String              STAKE_SD_PROPERTY     = "stakeSD";
-  private static final String              TXFR_PROPERTY         = "transfer";
+  private static final String              STAKE_THRESH_PROPERTY = "stakeThreshhold";
+  private static final String              TXFR_MIN_PROPERTY     = "transferMin";
+  private static final String              TXFR_MAX_PROPERTY     = "transferMax";
   private static final String              MINB_PROPERTY         = "minimum";
   private static final String              HELP_OPTION           = "help";
   private static final String              CONFIG_OPTION         = "config";
@@ -69,7 +73,9 @@ public class Scatterbrain
   private int                              interval;
   private double                           stakeMean;
   private double                           stakeSD;
-  private double                           transferPercent;
+  private double                           stakeThresh;
+  private double                           transferMin;
+  private double                           transferMax;
   private double                           minBalance;
 
   /** Set up command line options. */
@@ -85,7 +91,9 @@ public class Scatterbrain
     options.addOption("i", INTR_PROPERTY, true, "Interval in seconds between rounds (default: 2 minutes)");
     options.addOption("s", STAKE_MEAN_PROPERTY, true, "Mean amount to transfer as a stake to a scatter account (default: 50.0)");
     options.addOption("d", STAKE_SD_PROPERTY, true, "Standard deviation for stake transfer distribution (default: 5.0)");
-    options.addOption("t", TXFR_PROPERTY, true, "Standard deviation for stake transfer distribution (default: 5.0)");
+    options.addOption("n", STAKE_THRESH_PROPERTY, true, "Threshhold amount below which a scatter account will receive new stake. (default: 10.0)");
+    options.addOption("t", TXFR_MIN_PROPERTY, true, "Minimum limit of scatter amount. (default: 0.01");
+    options.addOption("T", TXFR_MAX_PROPERTY, true, "Maximum limit of scatter amount (default: 0.25");
     options.addOption("m", MINB_PROPERTY, true,
         "Minimum balance to keep in the source account. (Defaults to 315,000.0)");
     options.addOption("H", HELP_OPTION, true, "Displays usage information");
@@ -105,7 +113,9 @@ public class Scatterbrain
     interval = Integer.parseInt(props.getProperty(INTR_PROPERTY, DEFAULT_INTERVAL));
     stakeMean = Double.parseDouble(props.getProperty(STAKE_MEAN_PROPERTY, DEFAULT_STAKE_MEAN));
     stakeSD = Double.parseDouble(props.getProperty(STAKE_SD_PROPERTY, DEFAULT_STAKE_SD));
-    transferPercent = Double.parseDouble(props.getProperty(TXFR_PROPERTY, DEFAULT_TRANSFER));
+    stakeThresh = Double.parseDouble(props.getProperty(STAKE_THRESH_PROPERTY, DEFAULT_STAKE_THRESH));
+    transferMin = Double.parseDouble(props.getProperty(TXFR_MIN_PROPERTY, DEFAULT_TRANSFER_MIN));
+    transferMax = Double.parseDouble(props.getProperty(TXFR_MAX_PROPERTY, DEFAULT_TRANSFER_MAX));
     minBalance = Double.parseDouble(props.getProperty(MINB_PROPERTY, DEFAULT_MINB));
 
     URL url = null;
@@ -136,7 +146,7 @@ public class Scatterbrain
         double stakeAmount = 0.0;
         for (int i = 1; i <= scatter; i++)
         {
-          String currentSource = String.format("%s-%4d", prefix, i);
+          String currentSource = String.format("%s-%04d", prefix, i);
           List<String> accountAddrs = client.getAddressesByAccount(currentSource);
           if (null == accountAddrs || accountAddrs.size() == 0)
           {
@@ -144,13 +154,13 @@ public class Scatterbrain
             PrivateKey accountKey = new PrivateKey();
             client.importPrivKey(accountKey.toString(), currentSource, false);
             accountAddrs = client.getAddressesByAccount(currentSource);
-            Console.output(String.format("@|blue Created new scatter account %s |@", currentSource));
+            Console.output(String.format("@|cyan Created new scatter account %s |@", currentSource));
           }
             
           double curbal = client.getBalance(currentSource, 0);
-          if (curbal == 0.0)
+          if (curbal < stakeThresh)
           {
-            // Account is empty, so stake it.
+            // Account is low, so stake it.
             double transfer = BigDecimal.valueOf(random.nextGaussian() * stakeSD + stakeMean).setScale(8, RoundingMode.HALF_UP)
                 .doubleValue();
             String stakeTo = accountAddrs.get(0);
@@ -172,35 +182,51 @@ public class Scatterbrain
           {
             // Account has some spendable coin, so pick a random scatter account to send to.
             int rando = random.nextInt(scatter - 1) + 1;
-            String currentTarget = String.format("%s-%4d", prefix, rando);
+            while (rando == i)
+            {
+              // Don't send it right back to the sender.
+              rando = random.nextInt(scatter - 1) + 1;
+            }
+            String currentTarget = String.format("%s-%04d", prefix, rando);
             List<String> targetAddrs = client.getAddressesByAccount(currentTarget);
-            if (null == accountAddrs || accountAddrs.size() == 0)
+            if (null == targetAddrs || targetAddrs.size() == 0)
             {
               // Target doesn't exist yet so create it.
               PrivateKey accountKey = new PrivateKey();
               client.importPrivKey(accountKey.toString(), currentTarget, false);
               targetAddrs = client.getAddressesByAccount(currentTarget);
-              Console.output(String.format("@|blue Created new scatter account %s |@", currentTarget));
+              Console.output(String.format("@|cyan Created new scatter account %s |@", currentTarget));
             }
-            double send = curbal * transferPercent;
-            String sendTo = targetAddrs.get(0);
-            try
+            double sct = Math.abs(random.nextDouble() * transferMax - transferMin) + transferMin;
+            if (sct < curbal)
             {
-              client.sendFrom(currentSource, sendTo, send);
-              Console.output(String.format("@|green Scattered %f THT to %s. |@", send, currentTarget));
-              scatters++;
-              scatterAmount += send;
+              double send = BigDecimal.valueOf(sct).setScale(8, RoundingMode.HALF_UP).doubleValue();
+              String sendTo = targetAddrs.get(0);
+              try
+              {
+                client.sendFrom(currentSource, sendTo, send);
+                Console.output(String.format("@|green Scattered %f THT to %s. |@", send, currentTarget));
+                scatters++;
+                scatterAmount += send;
+              }
+              catch (Exception e)
+              {
+                Console.output(String.format("@|red Exception sending scatter transaction: %s |@", e.toString()));
+              }
             }
-            catch (Exception e)
+            else
             {
-              Console.output(String.format("@|red Exception sending scatter transaction: %s |@", e.toString()));
-            }  
+              Console.output(String.format("@|magenta %s waiting for sufficient spendable coins. |@", currentSource));
+            }
           }
-          Console.output("@|yellow Scatter round complete. |@");
-          Console.output(String.format("@|yellow Staked %f THT to %d accounts. |@", stakeAmount, stakes));
-          Console.output(String.format("@|yellow Scattered %f THT to %d accounts. |@", scatterAmount, scatters));
-        }   
-        
+          else
+          {
+            Console.output(String.format("@|magenta %s waiting for spendable coins. |@", currentSource));
+          }
+        }
+        Console.output("@|yellow Scatter round complete. |@");
+        Console.output(String.format("@|yellow Staked %f THT to %d accounts. |@", stakeAmount, stakes));
+        Console.output(String.format("@|yellow Scattered %f THT to %d accounts. |@", scatterAmount, scatters));   
       }
       else
       {
@@ -275,6 +301,10 @@ public class Scatterbrain
       {
         props.setProperty(ACCOUNT_PROPERTY, commandLine.getOptionValue(ACCOUNT_PROPERTY));
       }
+      if (commandLine.hasOption(SCATTER_PROPERTY))
+      {
+        props.setProperty(SCATTER_PROPERTY, commandLine.getOptionValue(SCATTER_PROPERTY));
+      }
       if (commandLine.hasOption(PREFIX_PROPERTY))
       {
         props.setProperty(PREFIX_PROPERTY, commandLine.getOptionValue(PREFIX_PROPERTY));
@@ -291,9 +321,13 @@ public class Scatterbrain
       {
         props.setProperty(STAKE_SD_PROPERTY, commandLine.getOptionValue(STAKE_SD_PROPERTY));
       }
-      if (commandLine.hasOption(TXFR_PROPERTY))
+      if (commandLine.hasOption(TXFR_MIN_PROPERTY))
       {
-        props.setProperty(TXFR_PROPERTY, commandLine.getOptionValue(TXFR_PROPERTY));
+        props.setProperty(TXFR_MIN_PROPERTY, commandLine.getOptionValue(TXFR_MIN_PROPERTY));
+      }
+      if (commandLine.hasOption(TXFR_MAX_PROPERTY))
+      {
+        props.setProperty(TXFR_MAX_PROPERTY, commandLine.getOptionValue(TXFR_MAX_PROPERTY));
       }
       if (commandLine.hasOption(MINB_PROPERTY))
       {
@@ -319,6 +353,7 @@ public class Scatterbrain
     catch (Exception e)
     {
       System.err.println(e.getLocalizedMessage());
+      e.printStackTrace(System.err);
     }
   }
 }

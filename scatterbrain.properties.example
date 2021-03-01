@@ -1,10 +1,15 @@
-# Example properties file for brainstorm
+# Example properties file for scatterbrain
 host = localhost
 port = 10617
 user = user
 password = password
-addr = 47TZrzoftLodX1gjbsMEDZPufLjy6uf7jD
-interval = 300
-transferMean = 100
-transferSD = 6
-minimum=315000
+account = scatter
+scatter = 20
+prefix = scatterbrain
+interval = 240
+stakeThreshhold = 10
+stakeMean = 20
+stakeSD = 2
+transferMin = 0.01
+transferMax = 0.25
+minimum=2000
