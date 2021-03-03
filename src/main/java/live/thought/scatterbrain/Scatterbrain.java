@@ -67,6 +67,7 @@ public class Scatterbrain
   /** Connection for Thought daemon */
   private ThoughtRPCClient                 client;
 
+  private boolean                          testnet;
   private int                              scatter;
   private String                           prefix;
   private String                           stakeAccount;
@@ -117,6 +118,15 @@ public class Scatterbrain
     transferMin = Double.parseDouble(props.getProperty(TXFR_MIN_PROPERTY, DEFAULT_TRANSFER_MIN));
     transferMax = Double.parseDouble(props.getProperty(TXFR_MAX_PROPERTY, DEFAULT_TRANSFER_MAX));
     minBalance = Double.parseDouble(props.getProperty(MINB_PROPERTY, DEFAULT_MINB));
+    
+    if (props.getProperty(PORT_PROPERTY, DEFAULT_PORT).startsWith("10"))
+    {
+      testnet = false;
+    }
+    else
+    {
+      testnet = true;
+    }
 
     URL url = null;
     try
@@ -151,7 +161,7 @@ public class Scatterbrain
           if (null == accountAddrs || accountAddrs.size() == 0)
           {
             // Account doesn't exist yet so create it.
-            PrivateKey accountKey = new PrivateKey();
+            PrivateKey accountKey = new PrivateKey(testnet);
             client.importPrivKey(accountKey.toString(), currentSource, false);
             accountAddrs = client.getAddressesByAccount(currentSource);
             Console.output(String.format("@|cyan Created new scatter account %s |@", currentSource));
@@ -192,7 +202,7 @@ public class Scatterbrain
             if (null == targetAddrs || targetAddrs.size() == 0)
             {
               // Target doesn't exist yet so create it.
-              PrivateKey accountKey = new PrivateKey();
+              PrivateKey accountKey = new PrivateKey(testnet);
               client.importPrivKey(accountKey.toString(), currentTarget, false);
               targetAddrs = client.getAddressesByAccount(currentTarget);
               Console.output(String.format("@|cyan Created new scatter account %s |@", currentTarget));
