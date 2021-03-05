@@ -176,7 +176,7 @@ public class Scatterbrain
             String stakeTo = accountAddrs.get(0);
             try
             {
-              client.sendFrom(stakeAccount, stakeTo, transfer);
+              client.sendFrom(stakeAccount, stakeTo, transfer, 6);
               Console.output(String.format("@|green Staked %f THT to %s. |@", transfer, currentSource));
               stakes++;
               stakeAmount += transfer;
@@ -214,7 +214,7 @@ public class Scatterbrain
               String sendTo = targetAddrs.get(0);
               try
               {
-                client.sendFrom(currentSource, sendTo, send);
+                client.sendFrom(currentSource, sendTo, send, 6);
                 Console.output(String.format("@|green Scattered %f THT to %s. |@", send, currentTarget));
                 scatters++;
                 scatterAmount += send;
